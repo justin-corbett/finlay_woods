@@ -230,7 +230,6 @@ function loader() {
   // prevent flash of .main container on load
   // works in tandem with <style> in page settings code
   gsap.set(".main-wrapper", { visibility: "visible" });
-  gsap.set(".loader-text", { y: "100%" })
   
   gsap.registerEffect({
     name: "swingUp",
@@ -240,8 +239,8 @@ function loader() {
         autoAlpha: 0, // FOUC - visibility -> visible when opacity > 0
         yPercent: 100,
         rotateZ: 0,
-        stagger: 0.2,
-        ease: 'power3.out',
+        stagger: 0,
+        ease: 'power1.out',
       });
     },
   	defaults: { duration: 0.5 },
@@ -250,34 +249,40 @@ function loader() {
 
   tl
   	.to(".loader-text", {
-    y: "-100%",
-    duration: 0.2,
-    ease: 'power3.out'
+    y: "100%",
+    opacity: 0,
+    duration: 0.5,
+    ease: 'power1.out'
   	})
-    // swing up "RESTOCK"
-    .swingUp(titleTexts[0])
+
+    // swing up "Loading..."
+    .swingUp(titleTexts[0],"<-0.4")
+
     // move title wrap up 33% y direction
-    .fromTo(titleWrap, { yPercent: 66 }, { yPercent: 33, duration: 0.5, ease: 'power3.out' })
-    // swing up "REORDER"
-    .swingUp(titleTexts[1],  "<+0.1")
-    
+    .fromTo(titleWrap, { yPercent: 100 }, { yPercent: 66, duration: 0.5, ease: 'power1.out' })
+
+    // swing up "VIDEOGRAPHY"
+    .swingUp(titleTexts[1],  "<+0")
+
     // move title wrap up to its zero position
-    .to(titleWrap, { yPercent: 0, duration: 1, ease: 'power3.out' }, "<+0.5")
-    // swing up "REPEAT"
-    .swingUp(titleTexts[2], { duration: 1 }, "<+0.1")
+    .to(titleWrap, { yPercent: 0, duration: 1, ease: 'power1.out' }, "<+0")
+
+    // swing up "FINLAY WOODS"
+    .swingUp(titleTexts[2], { duration: 0.5 }, "<+0.0")
+
     // bring main container into view and animate border-radius
     .to(".loader_background", {
-      yPercent: -100,
+      xPercent: -100,
       duration: 0.6,
       delay: 0.8,
-      ease: 'power3.out',
+      ease: 'power1.out',
     })
     .to(".loader-title", {
       autoAlpha: 0,
       duration: 0.2,
       delay: 0,
-      ease: 'power3.out',
-    }, "<+0.05")
+      ease: 'power1.out',
+    }, "<+0.0")
   
 }
 
@@ -397,7 +402,7 @@ gsap.timeline({
   scrollTrigger: {
       trigger: ".section-height",
       start: "top top",
-      end: "35% bottom",
+      end: "30% bottom",
       scrub: 1
   }
 })
@@ -406,12 +411,13 @@ gsap.timeline({
   ease: "power1.out" // You can adjust the ease as needed
 });
 
+/*
 // Scroll animation for about background
 gsap.timeline({
   scrollTrigger: {
-      trigger: ".scroll-trigger-about",
-      start: "top top",
-      end: "bottom 80%",
+      trigger: ".section-height",
+      start: "middle top",
+      end: "bottom+100vh bottom",
       scrub: 1
   }
 })
@@ -420,4 +426,5 @@ gsap.timeline({
   ease: "none"
  // You can adjust the ease as needed
 });
+*/
 
