@@ -1,7 +1,16 @@
+
+
 gsap.registerPlugin(ScrollTrigger);
 
 ScrollTrigger.defaults({
   markers: false,
+});
+
+// Show Grid – Shift + G to Show Grid
+$(document). keydown (function (e) {
+	if (e. shiftKey && e. key === "G") {
+		$(".grid-wrapper").toggleClass("hide");
+	}
 });
 
 /*
@@ -339,7 +348,7 @@ window.addEventListener("DOMContentLoaded", (event) => {
 });
 
 
-// Projects hover, add class
+// Projects hover, add class – titles
 document.addEventListener('DOMContentLoaded', () => {
  document.querySelectorAll('.collection-projects-item').forEach(trigger => {
   trigger.addEventListener('mouseover', function(){ 
@@ -370,6 +379,7 @@ let tlMain = gsap
     ease: "none"
   });
   
+  
 // hero photo
 gsap
   .timeline({
@@ -382,6 +392,32 @@ gsap
     }
   })
   .to(".hero-panel_img", { scale: 1 }, 0);
+
+  // video pinhead
+gsap
+.timeline({
+  scrollTrigger: {
+    trigger: ".collection-projects",
+    containerAnimation: tlMain,
+    start: "left right",
+    end: "right center",
+    scrub: true
+  }
+})
+.to(".projects-timeline-pin-wrapper", { x: "80vw" }, 0);
+
+  // video pinhead
+  gsap
+  .timeline({
+    scrollTrigger: {
+      trigger: ".collection-projects",
+      containerAnimation: tlMain,
+      start: "left center",
+      end: "left left",
+      scrub: true
+    }
+  })
+  .to(".projects-timeline-pin-wrapper", { opacity: "20%" }, 0);
   
 
 // Optional - Set sticky section heights based on inner content width
@@ -401,8 +437,8 @@ window.addEventListener("resize", function () {
 gsap.timeline({
   scrollTrigger: {
       trigger: ".section-height",
-      start: "top top",
-      end: "30% bottom",
+      start: "23% top",
+      end: "37.5% top",
       scrub: 1
   }
 })
@@ -410,6 +446,38 @@ gsap.timeline({
   x: 0,
   ease: "power1.out" // You can adjust the ease as needed
 });
+
+// Homepage Timeline Markers Animate on Pinhead Crossover
+let markers = document.querySelectorAll(".project-timeline-marker");
+markers.forEach(marker => {
+  gsap.set(marker, { height: "0.875em" }); // Set the initial height
+
+  let tl = gsap.timeline({
+    scrollTrigger: {
+      trigger: marker,
+      containerAnimation: tlMain,
+      start: "left right",
+      end: "left left",
+      scrub: true,
+      onUpdate: self => {
+        let markerBounds = marker.getBoundingClientRect();
+        let pinBounds = document.querySelector(".projects-timeline-pin-wrapper").getBoundingClientRect();
+        let innerPinBounds = document.querySelector(".projects-timeline-pin-inner-wrapper").getBoundingClientRect();
+
+        if (markerBounds.left < innerPinBounds.right && markerBounds.right > innerPinBounds.left) {
+          gsap.to(marker, { height: "2em", duration: 0.2, ease: "power1.out" }); // Increase height when touched by inner pin
+        } else if (markerBounds.left < pinBounds.right && markerBounds.right > pinBounds.left) {
+          gsap.to(marker, { height: "1.4em", duration: 0.2, ease: "power1.out" }); // Increase height when touched by outer pin
+        } else {
+          gsap.to(marker, { height: "0.875em", duration: 0.2, ease: "power1.out" }); // Reset to minimum height when not touched
+        }
+      }
+    }
+  });
+});
+
+
+
 
 /*
 // Scroll animation for about background
@@ -427,4 +495,171 @@ gsap.timeline({
  // You can adjust the ease as needed
 });
 */
+
+// Barba Page Trabsitions
+function resetWebflow(data) {
+  let dom = $(new DOMParser().parseFromString(data.next.html, "text/html")).find("html");
+  // reset webflow interactions
+  $("html").attr("data-wf-page", dom.attr("data-wf-page"));
+  window.Webflow && window.Webflow.destroy();
+  window.Webflow && window.Webflow.ready();
+  window.Webflow && window.Webflow.require("ix2").init();
+  // reset w--current class
+  $(".w--current").removeClass("w--current");
+  $("a").each(function () {
+    if ($(this).attr("href") === window.location.pathname) {
+      $(this).addClass("w--current");
+    }
+  });
+  // reset scripts
+  dom.find("[data-barba-script]").each(function () {
+    let codeString = $(this).text();
+    if (codeString.includes("DOMContentLoaded")) {
+      let newCodeString = codeString.replace(/window\.addEventListener\("DOMContentLoaded",\s*\(\s*event\s*\)\s*=>\s*{\s*/, "");
+      codeString = newCodeString.replace(/\s*}\s*\);\s*$/, "");
+    }
+    let script = document.createElement("script");
+    script.type = "text/javascript";
+    if ($(this).attr("src")) script.src = $(this).attr("src");
+    script.text = codeString;
+    document.body.appendChild(script).remove();
+  });
+}
+
+barba.hooks.enter((data) => {
+  gsap.set(data.next.container, { position: "fixed", top: 0, left: 0, width: "100%" });
+});
+barba.hooks.after((data) => {
+  gsap.set(data.next.container, { position: "relative" });
+  $(window).scrollTop(0);
+  resetWebflow(data);
+});
+
+barba.init({
+  preventRunning: true,
+  transitions: [
+    {
+      sync: true,
+      enter(data) {
+        let tl = gsap.timeline({ defaults: { duration: 1, ease: "power2.out" } });
+        tl.to(data.current.container, { opacity: 0, scale: 0.9 });
+        tl.from(data.next.container, { y: "100vh" }, "<");
+        return tl;
+      }
+    }
+  ]
+});
+
+
+// Red Recording Dot Off/On Animation
+// Ensure the DOM is fully loaded before running the script
+document.addEventListener("DOMContentLoaded", function() {
+  // Select all elements with the class 'recording-dot-wrapper'
+  const recordingDots = document.querySelectorAll('.recording-dot-wrapper');
+
+  // Use GSAP to create an infinite flashing animation
+  gsap.timeline({ repeat: -1 })
+    .to(recordingDots, { opacity: 1, duration: 1 }) // On for 1 second
+    .to(recordingDots, { opacity: 0, duration: 0.5 }) // Fade out for 0.5 second
+    .to(recordingDots, { opacity: 0, duration: 0.5 }); // Off for 0.5 second
+});
+
+// Set initial opacity of all .work-corners elements to 0
+gsap.set(".work-corners", { opacity: 0 });
+
+// Marquee Item Hover Animation
+document.querySelectorAll('.marquee_item').forEach(item => {
+  const image = item.querySelector('.marquee_img'); // Select the .marquee_img inside each .marquee_item
+  const workCorners = item.querySelector('.work-corners'); // Select the .work-corners inside each .marquee_item
+
+  item.addEventListener('mouseenter', () => {
+    // Scale down the image
+    gsap.to(image, { scale: 0.8, duration: 0.5, ease: "power2.inOut" });
+    // Fade in the .work-corners with a 0.5-second delay
+    gsap.to(workCorners, { opacity: 1, duration: 0.5, ease: "power1.inOut", delay: 0.25 });
+    // Desaturate all siblings to 100% grayscale
+    gsap.to(item.parentElement.querySelectorAll('.marquee_item'), {
+      filter: "grayscale(100%)",
+      duration: 0.5
+    });
+    // Remove grayscale from the hovered item
+    gsap.to(item, {
+      filter: "grayscale(0%)",
+      duration: 1
+    });
+  });
+
+  item.addEventListener('mouseleave', () => {
+    // Scale up the image
+    gsap.to(image, { scale: 1, duration: 0.5, ease: "power2.inOut" });
+    // Fade out the .work-corners with a 0.5-second delay
+    gsap.to(workCorners, { opacity: 0, duration: 0.5, ease: "power1.inOut" });
+    // Remove grayscale from all items on hover out
+    gsap.to(item.parentElement.querySelectorAll('.marquee_item'), {
+      filter: "grayscale(0%)",
+      duration: 0.5
+    });
+  });
+});
+
+
+
+
+
+
+// Navigation Start
+
+// Navigation desktop
+var tl = gsap.timeline();
+
+tl.set('.navigation-dropdown-bg-wrapper', { display: "block" })
+  .to('.navigation-dropdown-slide', { duration: 0.5, opacity: 1, y: "0%", ease: "power2.out" })
+  .to('.navigation-bg-main', { duration: 0.5, opacity: 1, ease: "power2.out" }, "-=0.5")
+  .to('.hr-navigation', { duration: 0.5, y: "6rem", ease: "power2.out" }, "-=0.5")
+  .to('.navigation-bg-title', { duration: 0.5, y: "0%", ease: "power2.out" }, "-=0.5")
+;
+
+// Mobile Navigation Start
+$(document).ready(function() {
+  if ($(window).width() < 991) {
+      // Function to add or remove class based on the state of .navigation_dropdown-toggle
+      function updateNavMobile() {
+          var navButton = $('.navigation_menu-button.w-nav-button');
+          var navButtonText = $('.nav-mobile-menu-btn-text');
+
+          if (navButton.hasClass('w--open')) {
+              tl.play();
+              lenis.stop()	
+              navButtonText.text('Close');
+              
+          } else {
+              tl.reverse();
+              lenis.start()	
+              navButtonText.text('Menu');
+              
+          }
+      }
+
+      // Initial call to update classes
+      updateNavMobile(); 
+
+      // Navigation background
+      const observer = new MutationObserver(function(mutationsList, observer) {
+          for(let mutation of mutationsList) {
+              // Check if the mutation involves changes to the class attribute
+              if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                  // Update classes when class attribute changes
+                  updateNavMobile();
+              }
+          }
+      });
+
+      // Start observing changes to attributes of elements with class 'navigation_dropdown-toggle'
+      observer.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['class'] });
+  }
+});
+
+
+
+
 
