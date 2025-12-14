@@ -1010,7 +1010,7 @@ function initBunnyPlayer() {
     video.addEventListener('pause', function() { pendingPlay = false; cancelAnimationFrame(rafId); updateProgressVisuals(); setStatus('paused'); });
     video.addEventListener('waiting', function() { setStatus('loading'); });
     video.addEventListener('canplay', function() { readyIfIdle(player, pendingPlay); });
-    video.addEventListener('ended', function() { pendingPlay = false; cancelAnimationFrame(rafId); updateProgressVisuals(); setStatus('paused'); setActivated(false); });
+    video.addEventListener('ended', function() { pendingPlay = false; cancelAnimationFrame(rafId); updateProgressVisuals(); setStatus('paused'); setActivated(false);   resetThumbnails(player);  });
 
     // Scrubbing (pointer events)
     if (timeline) {
@@ -1238,9 +1238,252 @@ function initBunnyPlayer() {
   }
 }
 
+// Helper: Reset video state on finish
+function resetThumbnails(player) {
+  stopThumbnailBlink();
+
+  player.querySelectorAll(".bunny-player__video-thumbnail").forEach(t => {
+    t.setAttribute("data-player-active", "false");
+
+    const idle = t.querySelector(".bunny-player__video-thumbnail-content");
+    const playing = t.querySelector(".bunny-player__video-thumbnail-content__playing");
+    const textEl = t.querySelector("[data-text-play]");
+
+    if (idle) idle.style.display = "flex";
+    if (playing) playing.style.display = "none";
+    if (textEl) textEl.textContent = "";
+  });
+}
+
+
 // Initialize Bunny HTML HLS Player (Advanced)
 document.addEventListener('DOMContentLoaded', function() {
   initBunnyPlayer();
 });
 
+let blinkingTl = null;
 
+function startThumbnailBlink(player) {
+  stopThumbnailBlink();
+  const thumb = player.querySelector(".bunny-player__video-thumbnail[data-player-active='true']");
+  if (!thumb) return;
+  const blinkBlock = thumb.querySelector(".thumbnail-playing-block");
+  if (!blinkBlock) return;
+
+  blinkBlock.style.opacity = 1;
+  blinkingTl = gsap.timeline({ repeat: -1, yoyo: true });
+  blinkingTl.to(blinkBlock, { duration: 0.4, opacity: 0.2, ease: "power1.inOut" })
+             .to(blinkBlock, { duration: 0.4, opacity: 1, ease: "power1.inOut" });
+}
+
+function stopThumbnailBlink() {
+  if (blinkingTl) {
+    blinkingTl.kill();
+    blinkingTl = null;
+  }
+}
+
+// Update the active thumbnail text
+function updateThumbnailText(player, text) {
+  const activeThumb = player.querySelector(".bunny-player__video-thumbnail[data-player-active='true']");
+  if (!activeThumb) return;
+  const textEl = activeThumb.querySelector("[data-text-play]");
+  if (textEl) textEl.textContent = text;
+}
+
+// Thumbnail click to switch video
+document.querySelectorAll(".bunny-player__video-thumbnail").forEach(thumb => {
+  thumb.addEventListener("click", () => {
+    const player = thumb.closest(".bunny-player");
+    const video = player.querySelector("video");
+    if (!video) return;
+
+    // Update thumbnail UI
+    player.querySelectorAll(".bunny-player__video-thumbnail").forEach(t => {
+      t.setAttribute("data-player-active", "false");
+      const idle = t.querySelector(".bunny-player__video-thumbnail-content");
+      const playing = t.querySelector(".bunny-player__video-thumbnail-content__playing");
+      if (idle) idle.style.display = "flex";
+      if (playing) playing.style.display = "none";
+    });
+    thumb.setAttribute("data-player-active", "true");
+    const idle = thumb.querySelector(".bunny-player__video-thumbnail-content");
+    const playing = thumb.querySelector(".bunny-player__video-thumbnail-content__playing");
+    if (idle) idle.style.display = "none";
+    if (playing) playing.style.display = "flex";
+
+    // Stop any previous blinking
+    stopThumbnailBlink();
+
+    // Pause video & reset HLS
+    video.pause();
+    if (player._hls) {
+      try { player._hls.destroy(); } catch (_) {}
+      player._hls = null;
+    }
+
+    // Load new HLS source
+    const newSrc = thumb.getAttribute("data-player-src");
+    if (!newSrc) return;
+
+    const hls = new Hls({ maxBufferLength: 10 });
+    hls.attachMedia(video);
+    hls.on(Hls.Events.MEDIA_ATTACHED, () => hls.loadSource(newSrc));
+    player._hls = hls;
+
+    // Play once manifest is parsed
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      video.play().catch(() => {});
+    });
+
+    // Blinking indicator + update text
+    video.addEventListener("play", () => {
+      startThumbnailBlink(player);
+      updateThumbnailText(player, "Playing");
+    });
+    video.addEventListener("pause", () => {
+      stopThumbnailBlink();
+      updateThumbnailText(player, "Paused");
+    });
+    video.addEventListener("ended", () => {
+      stopThumbnailBlink();
+      updateThumbnailText(player, "Paused");
+    });
+  });
+});
+
+// Auto-activate thumbnail for initially loaded video, but only when video actually plays
+document.querySelectorAll('[data-bunny-player-init]').forEach(player => {
+  const video = player.querySelector('video');
+  if (!video) return;
+
+  const checkInitialThumbnail = () => {
+    if (!player._hls) {
+      // HLS not attached yet, try next frame
+      requestAnimationFrame(checkInitialThumbnail);
+      return;
+    }
+
+    // Wait for MANIFEST_PARSED to ensure HLS is loaded
+    player._hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      const currentSrc = player.getAttribute('data-player-src') || '';
+      if (!currentSrc) return;
+
+      // Listen for the actual play event
+      const onPlay = () => {
+        const thumb = player.querySelector(`.bunny-player__video-thumbnail[data-player-src="${currentSrc}"]`);
+        if (thumb) {
+          // Trigger click to activate UI (blinking, text)
+          thumb.click();
+        }
+        video.removeEventListener('play', onPlay);
+      };
+
+      video.addEventListener('play', onPlay);
+    });
+  };
+
+  checkInitialThumbnail();
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// GSAP Split Text Scramble
+
+gsap.registerPlugin(SplitText);
+
+// Utility: pick a random lowercase letter NOT in the original word
+function randomLetterExcluding(originalChars) {
+  let char;
+  const lowerOriginal = originalChars.map(c => c.toLowerCase());
+  do {
+    char = String.fromCharCode(97 + Math.floor(Math.random() * 26)); // a-z
+  } while (lowerOriginal.includes(char));
+  return char;
+}
+
+function initChaoticHoverReducedRed() {
+  document.querySelectorAll('[data-scramble-hover="link"]').forEach((wrapper) => {
+    const target = wrapper.querySelector('[data-scramble-hover="target"]');
+
+    const split = new SplitText(target, { type: "chars" });
+    const chars = split.chars;
+    const originalChars = chars.map(c => c.textContent);
+    let isAnimating = false;
+
+    wrapper.addEventListener("mouseenter", () => {
+      if (isAnimating) return;
+      isAnimating = true;
+
+      const total = chars.length;
+      const indices = Array.from(Array(total).keys()); // all characters affected
+
+      const tl = gsap.timeline({
+        onComplete: () => {
+          chars.forEach((char, i) => {
+            char.textContent = originalChars[i];
+            char.style.color = "";
+            char.style.opacity = "";
+          });
+          isAnimating = false;
+        }
+      });
+
+      // Chaotic flicker letters for all characters
+      indices.forEach((i) => {
+        const charSpan = chars[i];
+        const flickerTimeline = gsap.timeline({});
+        const flickerCount = 5 + Math.floor(Math.random() * 2); // 5-6 flickers
+
+        for (let j = 0; j < flickerCount; j++) {
+          const rand = Math.random();
+          let newChar = originalChars[i];
+          let color = "";
+          let opacity = 1;
+
+          if (rand < 0.2) { 
+            // 20% chance red letter (reduce red letters)
+            newChar = originalChars[i];
+            color = "#ff0f00";
+          } else if (rand < 0.5) { 
+            // 30% hidden (opacity 0)
+            newChar = originalChars[i];
+            opacity = 0;
+          } else { 
+            // 50% random letter (a-z) not in original word
+            newChar = randomLetterExcluding(originalChars);
+          }
+
+          flickerTimeline.to(charSpan, {
+            duration: 0.04 + Math.random() * 0.06,
+            textContent: newChar,
+            color: color,
+            opacity: opacity,
+            ease: "none"
+          });
+        }
+
+        // Restore original char at end
+        flickerTimeline.to(charSpan, { duration: 0.05, textContent: originalChars[i], color: "", opacity: 1 });
+
+        tl.add(flickerTimeline, 0); // all flickers start together
+      });
+    });
+  });
+}
+
+document.addEventListener("DOMContentLoaded", initChaoticHoverReducedRed);
