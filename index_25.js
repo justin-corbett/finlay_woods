@@ -1,81 +1,475 @@
-// Initialize GSAP
-gsap.registerPlugin(ScrollTrigger, Flip, Observer, SplitText, CustomEase, ScrollToPlugin);
+// Register GSAP
+ document.addEventListener("DOMContentLoaded", (event) => {
+  gsap.registerPlugin(Observer,ScrollTrigger,SplitText,CustomEase)
+ });
 
-// Lenis (with GSAP Scroltrigger)
-const lenis = new Lenis();
+ // Lenis (with GSAP Scroltrigger)
+const lenis = new Lenis({
+  overscroll: false,
+  anchors: true,
+});
 lenis.on('scroll', ScrollTrigger.update);
 gsap.ticker.add((time) => {lenis.raf(time * 1000);});
 gsap.ticker.lagSmoothing(0);
 
+// Horizontal Scroll
+// Sticky section heights
+function setTrackHeights() {
+  document.querySelectorAll(".horizontal-scroll_section-height").forEach(section => {
+    const track = section.querySelector(".horizontal-scroll_track");
+    const trackWidth = track.scrollWidth / 2; // original content width
+    section.style.height = trackWidth + "px"; // fake height for vertical scroll
+  });
+}
+setTrackHeights();
+window.addEventListener("resize", setTrackHeights);
 
-// Show/hide grid w/ Shift + G
-$(function () {
-  const $wrap = $(".grid-wrap");
-  let tl = null; // active timeline instance
 
-  // Ensure wrapper starts hidden (your CSS should already do this)
-  $wrap.css("display", "none");
+// Build your horizontal timeline
+let horizontalMainTl = gsap.timeline({
+scrollTrigger: {
+  id: "horizontal-work",
+  trigger: ".horizontal-scroll_section-height",
+  start: "top top",
+  end: "bottom bottom",
+  scrub: 1
+}
+});
 
-  function buildOpenTimeline() {
-    // Clean up any previous timeline
-    if (tl) { tl.kill(); tl = null; }
+horizontalMainTl.to(".horizontal-scroll_track", {
+xPercent: -100,
+ease: "none"
+});
 
-    const cols = $wrap.find(".grid-column").get(); // fresh node list every time
 
-    // Clear any inline transforms from prior runs
-    gsap.set(cols, { clearProps: "transform" });
+// Scroll-To Anchor Lenis
+function initScrollToAnchorLenis() {
+  document.querySelectorAll("[data-anchor-target]").forEach(el => {
+    el.addEventListener("click", (e) => {
+      e.preventDefault();
 
-    tl = gsap.timeline({
-      defaults: { duration: 0.6, ease: "power2.out" },
-      onStart() {
-        $wrap.css("display", "flex");
-      },
-      onReverseComplete() {
-        $wrap.css("display", "none");
-        // Fully reset columns so next open starts clean
-        gsap.set(cols, { clearProps: "transform" });
-        // Kill timeline to avoid stale state
-        tl.kill();
-        tl = null;
+      const selector = el.getAttribute("data-anchor-target");
+      const target = document.querySelector(selector);
+      if (!target) return;
+
+      // Find parent horizontal section
+      const hSection = target.closest(".horizontal-scroll_section-height");
+      if (!hSection) {
+        // Not inside horizontal scroll → normal scroll
+        lenis.scrollTo(target, {
+          duration: 1.2,
+          easing: (x) => x
+        });
+        return;
       }
+
+      // Horizontal track inside section
+      const track = hSection.querySelector(".horizontal-scroll_track");
+      const trackWidth = track.scrollWidth;
+      const sectionHeight = parseFloat(getComputedStyle(hSection).height);
+
+      // Target element X position relative to track
+      const targetRect = target.getBoundingClientRect();
+      const trackRect = track.getBoundingClientRect();
+      const offsetX = targetRect.left - trackRect.left; // px
+
+      // Map horizontal offset to vertical scroll
+      const sectionTop = hSection.offsetTop;
+      const verticalScrollPos = sectionTop + (sectionHeight * offsetX / trackWidth);
+
+      lenis.scrollTo(verticalScrollPos, {
+        duration: 1.4,
+        easing: (x) => 1 - Math.pow(1 - x, 3)
+      });
     });
+  });
+}
 
-    // Smooth, jank-free column grow
-    tl.fromTo(
-      cols,
-      { scaleY: 0 },
-      { scaleY: 1, stagger: { each: 0.05, from: "left" } }
-    );
+// Initialize Scroll-To Anchor Lenis
+document.addEventListener('DOMContentLoaded', () => {
+  initScrollToAnchorLenis();
+});
 
-    return tl;
-  }
-
-  function isHidden() {
-    return $wrap.css("display") === "none";
-  }
-
-  $(document).on("keydown", function (e) {
-    if (e.shiftKey && String(e.key).toLowerCase() === "g") {
-      // Prevent fighting the current animation
-      if (tl && tl.isActive()) return;
-
-      if (isHidden()) {
-        // Open: (re)build fresh timeline and play
-        buildOpenTimeline().play(0);
-      } else {
-        // Close: reverse current tl if present, otherwise quick hide fallback
-        if (tl) {
-          tl.reverse();
-        } else {
-          // Rare edge: got visible without a tl
-          const cols = $wrap.find(".grid-column").get();
-          gsap.set(cols, { clearProps: "transform" });
-          $wrap.css("display", "none");
-        }
-      }
+// Animate work items as scroll into view
+gsap.utils.toArray(".marquee_item").forEach((item) => {
+  gsap.from(item, {
+    opacity: 0,
+    y: 40,
+    scale: 0.95,
+    duration: 0.6,
+    ease: "power3.out",
+    scrollTrigger: {
+      trigger: item,
+      containerAnimation: horizontalMainTl,
+      start: "left right",   // item enters from right edge
+      toggleActions: "play none none reverse"
     }
   });
 });
+
+document.querySelectorAll(".section-image").forEach((section) => {
+  const img = section.querySelector(".image-full_screen");
+
+  ScrollTrigger.create({
+    trigger: section,
+    containerAnimation: horizontalMainTl,
+    start: "left right",
+    end: "right left",
+    scrub: 1,
+    onUpdate: (self) => {
+      const progress = self.progress; // 0 → 1
+
+      // Map progress to -10vw → +10vw
+      const xVW = gsap.utils.mapRange(
+        0, 1,     // input range (scroll)
+        5, -5,  // output range (vw) — inverted so forward scroll moves left
+        progress
+      );
+
+      img.style.transform = `translateX(${xVW}vw)`;
+    }
+  });
+});
+
+
+
+
+
+
+
+/*
+// Timeline markers
+function initTimelineAnimations() {
+  // Timeline pinhead fade in
+  gsap.timeline({
+    scrollTrigger: {
+      trigger: ".collection-projects",
+      containerAnimation: horizontalMainTl,
+      start: "left 52.5%",
+      end: "left 47.5%",
+      scrub: true,
+    }
+  })
+  .to(".projects-timeline-pin-wrapper", { opacity: 1, ease: "power4.out" }, 0);
+
+  // Markers animation
+  const pinWrapper = document.querySelector(".projects-timeline-pin-wrapper");
+  const outerPin = document.querySelector(".projects-timeline-pin-outer-wrapper");
+  const innerPin = document.querySelector(".projects-timeline-pin-inner-wrapper");
+
+  const markers = document.querySelectorAll(".project-timeline-marker");
+
+  markers.forEach(marker => {
+    gsap.set(marker, { scaleY: 1, transformOrigin: "50% 100%" });
+
+    gsap.timeline({
+      scrollTrigger: {
+        trigger: marker,
+        containerAnimation: horizontalMainTl,
+        start: "left right",
+        end: "left left",
+        scrub: true,
+        onUpdate: self => {
+          const mBounds = marker.getBoundingClientRect();
+          const pinBounds = pinWrapper.getBoundingClientRect();
+          const outerBounds = outerPin.getBoundingClientRect();
+          const innerBounds = innerPin.getBoundingClientRect();
+
+          if (mBounds.left < innerBounds.right && mBounds.right > innerBounds.left) {
+            gsap.to(marker, { scaleY: 3.75, duration: 0.2, opacity: 1, ease: "power1.out" });
+          } else if (mBounds.left < outerBounds.right && mBounds.right > outerBounds.left) {
+            gsap.to(marker, { scaleY: 2.75, duration: 0.2, opacity: 0.5, ease: "power1.out" });
+          } else if (mBounds.left < pinBounds.right && mBounds.right > pinBounds.left) {
+            gsap.to(marker, { scaleY: 1.75, duration: 0.2, opacity: 0.3, ease: "power1.out" });
+          } else {
+            gsap.to(marker, { scaleY: 1, duration: 0.2, opacity: 0.1, ease: "power1.out" });
+          }
+        }
+      }
+    });
+  });
+}
+*/
+
+// Pick a random lowercase letter not in the original word
+function randomLetterExcluding(originalChars) {
+  let char;
+  const lowerOriginal = originalChars.map(c => c.toLowerCase());
+  do {
+    char = String.fromCharCode(97 + Math.floor(Math.random() * 26));
+  } while (lowerOriginal.includes(char));
+  return char;
+}
+
+// Flicker text animation
+function animateLoaderText(element, duration = 1.5) {
+  if (!element) return;
+
+  gsap.set(element, { display: "block", opacity: 1 });
+
+  const split = new SplitText(element, { type: "chars" });
+  const chars = split.chars;
+  const originalChars = chars.map(c => c.textContent);
+
+  gsap.set(chars, { opacity: 0, display: "inline-block" });
+
+  const tl = gsap.timeline();
+
+  chars.forEach((charSpan) => {
+    const flickerTl = gsap.timeline();
+    const flickerCount = 5 + Math.floor(Math.random() * 2);
+    const singleDuration = duration / (flickerCount + 1);
+
+    for (let i = 0; i < flickerCount; i++) {
+      const rand = Math.random();
+      let newChar = charSpan.textContent;
+      let color = "";
+      let opacity = 1;
+
+      if (rand < 0.2) color = "#ff0f00";
+      else if (rand < 0.5) opacity = 0;
+      else newChar = randomLetterExcluding(originalChars);
+
+      flickerTl.to(charSpan, {
+        duration: singleDuration,
+        textContent: newChar,
+        color,
+        opacity,
+        ease: "none"
+      });
+    }
+
+    flickerTl.to(charSpan, {
+      duration: singleDuration,
+      textContent: charSpan.textContent,
+      color: "",
+      opacity: 1
+    });
+
+    tl.add(flickerTl, 0);
+  });
+
+  return tl;
+}
+
+
+// Home Hero Logo SVG Animation
+let heroLogoTL;
+
+document.addEventListener("DOMContentLoaded", () => {
+  const logo = document.querySelectorAll(".hero-logo-svg");
+
+  // Set initial state
+  gsap.set(logo, {
+    yPercent: -110,
+    transformOrigin: "50% 50%",
+  });
+
+  // Create paused timeline
+  heroLogoTL = gsap.timeline({ paused: true });
+
+  heroLogoTL.to(logo, {
+    yPercent: 0,
+    duration: 0.8,
+    ease: "power3.out",
+  });
+});
+
+// Play animation
+function animateHeroLogo() {
+  if (!heroLogoTL) return;
+  heroLogoTL.play();
+}
+
+
+
+let descriptionSplit;
+
+function initHeroDescriptionSplit() {
+  const description = document.querySelector(".home_hero-description");
+  if (!description) return;
+
+  // Clean up previous split
+  if (descriptionSplit) descriptionSplit.revert();
+
+  // Create SplitText for lines
+  descriptionSplit = SplitText.create(description, {
+    type: "lines",
+    mask: "lines",
+    aria: "auto",
+    autoSplit: true,
+  });
+
+  // Hide all lines individually
+  gsap.set(descriptionSplit.lines, { yPercent: 100 });
+
+  // Make the parent visible AFTER SplitText has processed
+  gsap.set(description, { autoAlpha: 1 });
+}
+
+function animateHeroDescription() {
+  if (!descriptionSplit) return;
+
+  gsap.to(descriptionSplit.lines, {
+    yPercent: 0,
+    duration: 0.8,
+    ease: "power4.out",
+    stagger: 0.15,
+  });
+}
+
+// Wait for fonts to be ready
+document.fonts.ready.then(() => {
+  initHeroDescriptionSplit();
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Loader init
+function initLoader() {
+  const counter = document.querySelector(".loader-counter");
+  const loaderName = document.querySelector(".loader-name");
+  const loaderRole = document.querySelector(".loader-role");
+  const videoWrapper = document.querySelector(".loader-video");
+  const videoPreview = document.querySelector(".loader_video-preview");
+  const videoUI = document.querySelector(".loader-video-ui");
+
+  if (!counter || !videoPreview || !videoWrapper) return;
+
+  // Initial states
+  gsap.set(counter, { y: "200%", opacity: 1 });
+  gsap.set(videoPreview, { y: "101%" });
+  gsap.set(videoUI, { autoAlpha: 0 });
+
+  const videoSlideDuration = 1;
+  const counterSlideDuration = 1;
+  const counterCountDuration = 4;
+  const nameFlickerDuration = 1.2;
+  const roleFlickerDuration = 1.2;
+  const fadeOutDuration = 0.6;
+  const wrapperExpandDuration = 1.5;
+  const loaderFadeOutDuration = 0.8;
+  const uiFadeInDuration = 0.6;
+
+  const tl = gsap.timeline();
+
+  tl.addLabel("videoIn");
+
+
+
+  tl.to(videoPreview, {
+    y: "0%",
+    duration: videoSlideDuration,
+    ease: "power3.out",
+    onStart: () => {
+      lenis.stop();
+      lenis.scrollTo("#top", {
+        duration: 0.2,
+        force: true,
+      });
+    }
+  }, "videoIn");
+
+  tl.to(counter, {
+    y: "0%",
+    duration: counterSlideDuration,
+    ease: "power3.out"
+  }, "videoIn+=0.3");
+
+  tl.to({ val: 0 }, {
+    val: 100,
+    duration: counterCountDuration,
+    ease: "linear",
+    onUpdate() {
+      counter.textContent = Math.floor(this.targets()[0].val)
+        .toString()
+        .padStart(2, "0");
+    }
+  }, "videoIn");
+
+  tl.to(videoUI, {
+    autoAlpha: 1,
+    duration: uiFadeInDuration
+  }, "videoIn+=" + videoSlideDuration);
+
+  if (loaderName) {
+    tl.add(
+      animateLoaderText(loaderName, nameFlickerDuration),
+      "videoIn+=" + videoSlideDuration
+    );
+  }
+
+  if (loaderRole) {
+    tl.add(
+      animateLoaderText(loaderRole, roleFlickerDuration),
+      "videoIn+=" + (videoSlideDuration + 0.3)
+    );
+  }
+
+  tl.add(() => {
+    gsap.to([counter, loaderName, loaderRole], {
+      opacity: 0,
+      duration: fadeOutDuration,
+      ease: "power2.out"
+    });
+
+    gsap.to(videoWrapper, {
+      width: "100%",
+      height: "100%",
+      duration: wrapperExpandDuration,
+      ease: "power2.out"
+    });
+  }, "videoIn+=" + counterCountDuration);
+
+  tl.to(".loader", {
+    autoAlpha: 0,
+    duration: loaderFadeOutDuration,
+    ease: "power2.out",
+    onComplete: () => {
+      gsap.set(".loader", { display: "none" });
+
+      // start smooth scroll
+      lenis.start();
+
+      // refresh ScrollTrigger AFTER loader layout stabilizes
+      ScrollTrigger.refresh(true);
+
+      animateHeroLogo();
+
+      gsap.delayedCall(0.3, () => {
+        animateHeroDescription();
+      });
+
+    }
+  });
+
+}
+
+// ✅ DOM READY → FONTS READY → INIT
+document.addEventListener("DOMContentLoaded", () => {
+    initLoader();
+});
+
+
+
+
+
 
 // Navigation – Timezone 
 function initDynamicCurrentTime() {
@@ -203,33 +597,6 @@ window.addEventListener("DOMContentLoaded", (event) => {
   });
 });
 
-// Horizontal Scroll
-
-// Sticky section heights
-function setTrackHeights() {
-$(".horizontal-scroll_section-height").each(function () {
-  let trackWidth = $(this).find(".horizontal-scroll_track").outerWidth();
-  $(this).height(trackWidth);
-});
-}
-setTrackHeights();
-window.addEventListener("resize", setTrackHeights);
-
-// Build your horizontal timeline
-let horizontalMainTl = gsap.timeline({
-scrollTrigger: {
-  trigger: ".horizontal-scroll_section-height",
-  start: "top top",
-  end: "bottom bottom",
-  scrub: 1
-}
-});
-
-horizontalMainTl.to(".horizontal-scroll_track", {
-xPercent: -100,
-ease: "none"
-});
-
 // Theme switching per section
 gsap.utils.toArray("[data-theme-section]").forEach((section) => {
 const theme = section.getAttribute("data-theme-section");
@@ -251,56 +618,6 @@ ScrollTrigger.create({
     });
   }
   // , markers: true // debug
-});
-});
-
-
-// Timeline pinhead fade in
-gsap.timeline({
-scrollTrigger: {
-  trigger: ".collection-projects",
-  containerAnimation: horizontalMainTl,
-  start: "left 52.5%",
-  end: "left 47.5%",
-  scrub: true,
-}
-})
-.to(".projects-timeline-pin-wrapper", { opacity: "100%", ease: "power4.out"
-}, 0);
-
-// Homepage Timeline Markers Animate on Pinhead Crossover
-let markers = document.querySelectorAll(".project-timeline-marker");
-markers.forEach(marker => {
-  gsap.set(marker, { scaleY: 1, transformOrigin: "50% 100%", }); // Set the initial height
-
-  let tl = gsap.timeline({
-    scrollTrigger: {
-      trigger: marker,
-      containerAnimation: horizontalMainTl,
-      start: "left right",
-      end: "left left",
-      scrub: true,
-      onUpdate: self => {
-        let markerBounds = marker.getBoundingClientRect();
-        let pinBounds = document.querySelector(".projects-timeline-pin-wrapper").getBoundingClientRect();
-        let outerPinBounds = document.querySelector(".projects-timeline-pin-outer-wrapper").getBoundingClientRect();
-        let innerPinBounds = document.querySelector(".projects-timeline-pin-inner-wrapper").getBoundingClientRect();
-
-        if (markerBounds.left < innerPinBounds.right && markerBounds.right > innerPinBounds.left) {
-          // Inner pin → 2em
-          gsap.to(marker, { scaleY: 3.75, duration: 0.2, opacity: 1, ease: "power1.out" });
-        } else if (markerBounds.left < outerPinBounds.right && markerBounds.right > outerPinBounds.left) {
-          // Outer wrapper → 1.5em
-          gsap.to(marker, { scaleY: 2.75, duration: 0.2, opacity: 0.5, ease: "power1.out" });
-        } else if (markerBounds.left < pinBounds.right && markerBounds.right > pinBounds.left) {
-          // Pin wrapper → 1.25em
-          gsap.to(marker, { scaleY: 1.75, duration: 0.2, opacity: 0.3, ease: "power1.out" });
-        } else {
-          // Reset → 0.75em
-          gsap.to(marker, { scaleY: 1, duration: 0.2, opacity: 0.1, ease: "power1.out" });
-        }
-      }
-    }
   });
 });
 
@@ -386,7 +703,7 @@ window.addEventListener("mousemove", (e) => {
   const clampedY = Math.min(Math.max(e.clientY, minY), maxY);
 
   // ---- X bounds (7.5em left / 5em right)
-  const minX = 7.5 * bodyFontSize;
+  const minX = 5.1 * bodyFontSize;
   const maxX = window.innerWidth - (5 * bodyFontSize);
   const clampedX = Math.min(Math.max(e.clientX, minX), maxX);
 
@@ -441,8 +758,8 @@ window.addEventListener("mousemove", (e) => {
 
 // Red Recording Dot Off/On Animation
 document.addEventListener("DOMContentLoaded", function() {
-  // Select all elements with the class 'recording-dot-wrapper'
-  const recordingDots = document.querySelectorAll('.recording-dot-wrapper');
+  // Select all elements with the class 'recording-dot'
+  const recordingDots = document.querySelectorAll('.recording-dot');
 
   // Use GSAP to create an infinite flashing animation
   gsap.timeline({ repeat: -1 })
@@ -453,109 +770,253 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 
 
-// Set initial opacity of all .work-corners elements to 0
-gsap.set(".work-corners", { opacity: 0 });
+// Marquee Item Hover 
+const marqueeItems = document.querySelectorAll('.marquee_item');
 
+// --- Initialize & autoplay all marquee videos ---
+marqueeItems.forEach(item => {
+  const video = item.querySelector('.marquee_video-preview');
+  if (!video) return;
 
-// Marquee Item Hover Animation
-document.querySelectorAll('.marquee_item').forEach(item => {
-  const image       = item.querySelector('.marquee_img');
-  const workCorners = item.querySelector('.work-corners');
-  const videoSelf   = item.querySelector('.marquee_video-preview');
+  video.muted = true;
+  video.loop = true;
+  video.playsInline = true;
 
-  const allItems = item.parentElement?.querySelectorAll('.marquee_item') || [];
+  const playPromise = video.play();
+  if (playPromise !== undefined) playPromise.catch(() => {});
+});
+
+// --- Hover behaviour ---
+marqueeItems.forEach(item => {
 
   item.addEventListener('mouseenter', () => {
-    // Visuals
-    gsap.to(image, { scale: 0.8, duration: 0.5, ease: "power4.out" });
-    gsap.to(workCorners, { opacity: 1, duration: 0.5, ease: "power4.out", delay: 0.25 });
-    gsap.to(allItems, { filter: "grayscale(100%)", duration: 0.5 });
+    // --- GSAP animations ---
+    gsap.to(marqueeItems, { filter: "grayscale(100%)", duration: 1 });
     gsap.to(item, { filter: "grayscale(0%)", duration: 1 });
 
-    // Keep autoplay on self
-    if (videoSelf) {
-      videoSelf.setAttribute("autoplay", "");
-      videoSelf.play?.();
-    }
+    // --- Pause ALL sibling videos ---
+    marqueeItems.forEach(otherItem => {
+      if (otherItem === item) return;
 
-    // Remove autoplay from siblings
-    allItems.forEach(sib => {
-      if (sib === item) return;
-      const v = sib.querySelector('.marquee_video-preview');
-      if (!v) return;
-      v.removeAttribute("autoplay");
-      v.pause?.();
-      // Optionally reset
-      // v.currentTime = 0;
+      const otherVideo = otherItem.querySelector('.marquee_video-preview');
+      if (otherVideo && !otherVideo.paused) {
+        otherVideo.pause();
+      }
     });
   });
 
   item.addEventListener('mouseleave', () => {
-    // Visuals
-    gsap.to(image, { scale: 1, duration: 0.5, ease: "power4.out" });
-    gsap.to(workCorners, { opacity: 0, duration: 0.5, ease: "power4.out" });
-    gsap.to(allItems, { filter: "grayscale(0%)", duration: 0.5 });
 
-    // Siblings get autoplay back
-    allItems.forEach(sib => {
-      if (sib === item) return;
-      const v = sib.querySelector('.marquee_video-preview');
-      if (!v) return;
-      v.setAttribute("autoplay", "");
-      v.play?.();
+    // --- Resume ALL videos ---
+    marqueeItems.forEach(otherItem => {
+      const otherVideo = otherItem.querySelector('.marquee_video-preview');
+      if (otherVideo && otherVideo.paused) {
+        const playPromise = otherVideo.play();
+        if (playPromise !== undefined) playPromise.catch(() => {});
+      }
     });
 
-    // Self just keeps autoplay (no change)
+    gsap.to(marqueeItems, { filter: "grayscale(0%)", duration: 1 });
+    gsap.to(item, { filter: "grayscale(0%)", duration: 1 });
+
   });
 });
+
+
+function animateMarqueeHover(item) {
+  const marqueeUI = item.querySelector('.marquee-video-ui');
+
+  // Borders
+  const borderTop = item.querySelector('.ui-border-top');
+  const borderBottom = item.querySelector('.ui-border-bottom');
+  const borderLeft = item.querySelector('.ui-border-left');
+  const borderRight = item.querySelector('.ui-border-right');
+
+  // Corners
+  const corners = {
+    tlH: item.querySelector('.corner-tl-h'),
+    tlV: item.querySelector('.corner-tl-v'),
+    trH: item.querySelector('.corner-tr-h'),
+    trV: item.querySelector('.corner-tr-v'),
+    blH: item.querySelector('.corner-bl-h'),
+    blV: item.querySelector('.corner-bl-v'),
+    brH: item.querySelector('.corner-br-h'),
+    brV: item.querySelector('.corner-br-v'),
+  };
+
+  // Text
+  const textItems = item.querySelectorAll(
+    '.text-work-record, .text-work-shutter, .text-work-aperture'
+  );
+  const timeText = item.querySelector('.text-work-time');
+  const recordingDot = item.querySelector('.recording-dot-wrap');
+
+  // Initial states
+  gsap.set([...textItems, timeText], { yPercent: 100 });
+  gsap.set(recordingDot, { opacity: 0 });
+
+  // ───────────────── TIMER ─────────────────
+  let startTime = 0;
+  let tickerActive = false;
+  let resetDelayCall;
+
+  function formatTime(ms) {
+    const totalSeconds = ms / 1000;
+    const seconds = Math.floor(totalSeconds) % 60;
+    const frames = Math.floor((totalSeconds % 1) * 100);
+
+    return `00:${seconds.toString().padStart(2, '0')}:${frames
+      .toString()
+      .padStart(2, '0')}`;
+  }
+
+  function startTimer() {
+    if (resetDelayCall) resetDelayCall.kill();
+
+    startTime = performance.now();
+    tickerActive = true;
+
+    gsap.ticker.add(updateTimer);
+  }
+
+  function updateTimer() {
+    if (!tickerActive) return;
+
+    const elapsed = performance.now() - startTime;
+    timeText.textContent = formatTime(elapsed);
+  }
+
+  function stopAndResetTimer() {
+    tickerActive = false;
+    gsap.ticker.remove(updateTimer);
+    timeText.textContent = '00:00:00';
+  }
+
+  // ───────────────── TIMELINE ─────────────────
+  const tl = gsap.timeline({ paused: true });
+
+  tl.set(marqueeUI, { display: 'flex' }, 0)
+
+    // Borders
+    .from(borderTop, { width: '0%', duration: 1, ease: 'power1.out' }, 0)
+    .from(borderBottom, { width: '0%', duration: 1, ease: 'power2.out' }, '<')
+    .from(borderRight, { height: '0%', duration: 1, ease: 'power2.out' }, '<')
+    .from(borderLeft, { height: '0%', duration: 1, ease: 'power2.out' }, '<')
+
+    // Corners
+    .from(corners.tlH, { width: '0%', duration: 0.2 }, '<0.1')
+    .from(corners.tlV, { height: '0%', duration: 0.2 }, '<0.05')
+    .from(corners.trH, { width: '0%', duration: 0.2 }, '<0.05')
+    .from(corners.trV, { height: '0%', duration: 0.2 }, '<0.05')
+    .from(corners.blH, { width: '0%', duration: 0.2 }, '<0.05')
+    .from(corners.blV, { height: '0%', duration: 0.2 }, '<0.05')
+    .from(corners.brH, { width: '0%', duration: 0.2 }, '<0.05')
+    .from(corners.brV, { height: '0%', duration: 0.2 }, '<0.05')
+
+    // Text reveal
+    .to(
+      [...textItems, timeText],
+      {
+        yPercent: 0,
+        duration: 0.6,
+        ease: 'power3.out',
+        stagger: 0.05,
+      },
+      '<0.1'
+    )
+
+    // Recording dot
+    .to(
+      recordingDot,
+      {
+        opacity: 1,
+        duration: 0.4,
+        ease: 'power2.out',
+      },
+      '<'
+    );
+
+  // ───────────────── EVENTS ─────────────────
+  item.addEventListener('mouseenter', () => {
+    gsap.to(item, {
+      scale: 0.8,
+      duration: 0.5,
+      ease: 'power2.inOut',
+    });
+
+    tl.play();
+    startTimer();
+  });
+
+  item.addEventListener('mouseleave', () => {
+    gsap.to(item, {
+      scale: 1,
+      duration: 0.5,
+      ease: 'power2.inOut',
+    });
+
+    tl.reverse();
+
+    resetDelayCall = gsap.delayedCall(1, stopAndResetTimer);
+  });
+}
+
+// Apply to all marquee items
+document.querySelectorAll('.marquee_item').forEach(item => {
+  animateMarqueeHover(item);
+});
+
+
+
+
+
+
+
+
+
 
 
 // Navigation + Hover (split both main & hover so close animates whichever is visible)
 document.addEventListener("DOMContentLoaded", () => {
   const navPanel = document.querySelector(".navigation-dropdown-slide"); // background panel
-  const navMenu  = document.querySelector(".nav_menu");                  // wrapper
-  const navBtn   = document.querySelector(".nav_menu-button");           // toggle button
-  const navLinks = Array.from(document.querySelectorAll(".nav_link"));   // each nav item
+  const navMenu  = document.querySelector(".nav_menu");                 // wrapper
+  const navBtn   = document.querySelector(".nav_menu-button");          // toggle button
+  const navLinks = Array.from(document.querySelectorAll(".nav_link"));  // each nav item
+  const navNumbers = Array.from(document.querySelectorAll(".nav_link-number")); // numbers
 
   // selectors for button + borders + cursor parts + extras
-  const menuLines      = document.querySelectorAll(".menu-button-line");
-  const menuSeparators = document.querySelectorAll(".menu-button-separator");
-  const navBorders     = document.querySelectorAll(".nav-border");
+
   const cursorSquares  = document.querySelectorAll(".cursor-square-left, .cursor-square-center");
   const cursorLines    = document.querySelectorAll(".cursor-line-h, .cursor-line-v");
   const cursorText     = document.querySelectorAll(".cursor-text");
-  const logo           = document.querySelectorAll(".nav-logo");
-  const time           = document.querySelectorAll(".time-box");
-
 
   if (!navPanel || !navMenu || !navBtn || !navLinks.length) return;
 
-  // -------- Speed controls (1 = normal) --------
+  // -------- Speed controls --------
   const OPEN_SPEED  = 1;     // playback speed when opening
-  const CLOSE_SPEED = 1.5;   // playback speed when closing
+  const CLOSE_SPEED = 2;     // playback speed when closing
 
-  // ---- Build per-link hover timelines (store on the element) ----
+  // ---- Build per-link hover timelines ----
   navLinks.forEach(link => {
     const main  = link.querySelector(".nav_link-main");
     const hover = link.querySelector(".nav_link-hover");
     const mask  = link.querySelector(".nav_link-mask");
     if (!main || !hover || !mask) return;
 
-    // Ensure proper stacking once (safe if already in CSS)
+    // stacking + mask setup
     mask.style.position  ||= "relative";
     mask.style.overflow  ||= "hidden";
     hover.style.position ||= "absolute";
     hover.style.left = "0"; hover.style.top = "0"; hover.style.width = "100%";
 
-    // Make sure hover starts below (CSS can do this too)
     if (!hover.style.transform) gsap.set(hover, { yPercent: 100 });
 
     const htl = gsap.timeline({
       paused: true,
       defaults: { duration: 0.45, ease: "power3.out", overwrite: "auto" }
     });
-    htl.to(main,  { yPercent: -100 }, 0)
-       .fromTo(hover, { yPercent: 100 }, { yPercent: 0, immediateRender: false }, 0);
+    htl.to(main, { yPercent: -100 }, 0)
+       .fromTo(hover, { yPercent: 105 }, { yPercent: 0, immediateRender: false }, 0);
 
     link._hoverTl = htl;
 
@@ -575,12 +1036,10 @@ document.addEventListener("DOMContentLoaded", () => {
   SplitText.autoSplit?.({
     targets: splitTargets,
     types: "words",
-    mask: "words",
     wordClass: "nav-word",
     reduceWhiteSpace: false
   }) || SplitText.create(splitTargets, {
     type: "words",
-    mask: "words",
     wordsClass: "nav-word",
     reduceWhiteSpace: false
   });
@@ -590,49 +1049,34 @@ document.addEventListener("DOMContentLoaded", () => {
   // ---- Prep states ----
   gsap.set(navMenu,  { display: "none" });
   gsap.set(navPanel, { x: "-100%" });
-  gsap.set(allWords, { yPercent: 110 });
+  gsap.set([...allWords, ...navNumbers], { yPercent: 110 });
 
   // ---- Open/Close timeline ----
   const tl = gsap.timeline({ paused: true, defaults: { ease: "power3.out" } });
 
-  // disable pointer events on navbar_container at start
+  // disable pointer events at start
   tl.set(navMenu, { display: "block" }, 0)
     .to(navPanel, { duration: 1, x: "0%", ease: "power3.inOut" })
-    .to(allWords, {
-      duration: 0.7,
-      yPercent: 0,
-      stagger: { amount: 0.5, from: "start" }
-    }, "<50%")
-    // animate menu button parts, nav borders, time-square background to black
-    .to(
-      [menuLines, menuSeparators, navBorders, ".time-square"],
-      { backgroundColor: "#000", duration: 0.5 },
-      "<"
-    )
-    // fade out cursor elements and text
-    .to([cursorSquares, cursorLines, cursorText], { opacity: 0, duration: 0.5 }, "<")
-    // animate nav-location text color to black
-    .to(".nav-location", { color: "#000", duration: 0.5 }, "<")
-    // animate logo text color to black
-    .to([logo], { color: "#000", duration: 0.5 }, "<")
-    // animate time text and background
-    .to([time], { color: "#FFFFFF", backgroundColor: "#000", duration: 0.5 }, "<")
-
+    .to(allWords, { duration: 0.7, yPercent: 0, stagger: { amount: 0.5, from: "start" } }, "<50%")
+    .to(navNumbers, { duration: 0.7, yPercent: 0, stagger: { amount: 0.5, from: "start" } }, "<50%")
+    .to([cursorSquares, cursorLines, cursorText], { opacity: 0, duration: 0.3 }, 0)
     // re-enable pointer events after open finishes
     .set(".navbar_container", { pointerEvents: "auto" });
 
-  // reset navMenu visibility when completely closed
-  tl.eventCallback("onReverseComplete", () => {
-    gsap.set(navMenu, { display: "none" });
-    window.lenis?.start?.();
-  });
-
-  // ---- Toggle helpers (with timeScale for speed control) ----
+  // ---- Toggle helpers with color class ----
   let isOpen = false;
 
   const openNav = () => {
     navLinks.forEach(l => l._hoverTl?.timeScale(CLOSE_SPEED).reverse(0));
-    window.lenis?.stop?.();
+    lenis.stop();
+
+  // Add open color class with 0.2s delay
+  gsap.delayedCall(0.2, () => {
+    document.querySelectorAll("[data-theme-nav]").forEach(el => {
+      el.classList.add("nav-open-black");
+    });
+  });
+
     tl.timeScale(OPEN_SPEED).play(0);
     isOpen = true;
   };
@@ -640,6 +1084,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const closeNav = () => {
     navLinks.forEach(l => l._hoverTl?.timeScale(CLOSE_SPEED).reverse());
     tl.timeScale(CLOSE_SPEED).reverse();
+
+  // Remove open color class with 0.6s delay
+  gsap.delayedCall(0.6, () => {
+    document.querySelectorAll("[data-theme-nav]").forEach(el => {
+      el.classList.remove("nav-open-black");
+    });
+  });
+
     isOpen = false;
   };
 
@@ -651,25 +1103,40 @@ document.addEventListener("DOMContentLoaded", () => {
     navMenu.setAttribute("aria-hidden", isOpen ? "false" : "true");
   });
 
-  // expose if needed elsewhere
+  // reset navMenu visibility when completely closed
+  tl.eventCallback("onReverseComplete", () => {
+    gsap.set(navMenu, { display: "none" });
+    lenis.start();
+  });
+
+  // expose timeline if needed
   window.navOpenTl = tl;
 });
 
 
+
 // Nav link hover
 document.addEventListener("DOMContentLoaded", () => {
-  const links = document.querySelectorAll(".nav_link");
+  const links = document.querySelectorAll(".nav-link-wrap");
   if (!links.length) return;
 
   links.forEach(link => {
     const main  = link.querySelector(".nav_link-main");
     const hover = link.querySelector(".nav_link-hover");
-    if (!main || !hover) return;
+    const imgWrap = link.querySelector(".nav-image-wrap");
+    const navLinkWrap = link.querySelector(".nav_link");
+    const navSpacer = link.querySelector(".nav_link-spacer");
+    const navLinkNumber = link.querySelector(".nav_link-number");
+
+    if (!main || !hover || !imgWrap || !navLinkWrap || !navSpacer || !navLinkNumber ) return;
 
     // timeline (no autoAlpha, no initial set)
-    const tl = gsap.timeline({ paused: true, defaults: { duration: 0.3, ease: "power3.inOut" }});
-    tl.to(main,  { yPercent: -100 }, 0)
-      .to(hover, { yPercent: -100 }, 0);
+    const tl = gsap.timeline({ paused: true, defaults: { duration: 0.3, ease: "power2.inOut" }});
+    tl.to(main,  { yPercent: -110 }, 0)
+      .to(hover, { yPercent: -110 }, 0)
+      .to(imgWrap, { width: "auto" }, 0)
+      .to(navSpacer, { width: "2em" }, 0)
+      .to(navLinkNumber, { color: "white" }, 0);
 
     // mouse
     link.addEventListener("mouseenter", () => tl.play());
@@ -682,43 +1149,48 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // Scrollbar
-function initScrollProgressBar() {  
+function initScrollProgressBar() {
   const progressBar = document.querySelector('.progress-bar');
   const progressBarWrap = document.querySelector('.progress-bar-wrap');
 
-  // Ensure the bar scales from the top
-  gsap.set(progressBar, { scaleY: 0, transformOrigin: "top center" });
+  if (!progressBar || !progressBarWrap) return;
 
-  // Animate the progress bar as you scroll
+  // Convert 7.5em to pixels (based on wrap font-size)
+  const fontSize = parseFloat(
+    getComputedStyle(progressBarWrap).fontSize
+  );
+  const minHeightPx = 7.5 * fontSize;
+
+  // Measure full bar height
+  const fullHeight = progressBarWrap.offsetHeight;
+
+  // Calculate minimum scale value
+  const minScaleY = minHeightPx / fullHeight;
+
+  // Set initial state
+  gsap.set(progressBar, {
+    scaleY: minScaleY,
+    transformOrigin: 'top center',
+  });
+
+  // Animate scroll progress
   gsap.to(progressBar, {
     scaleY: 1,
     ease: 'none',
     scrollTrigger: {
-      trigger: document.body,
+      trigger: '.horizontal-scroll_section-height',
       start: 'top top',
       end: 'bottom bottom',
       scrub: 0.5,
     },
   });
-
-  // Click listener to scroll vertically
-  progressBarWrap.addEventListener('click', (event) => {
-    const clickY = event.clientY; // click position vertically
-    const progress = clickY / progressBarWrap.offsetHeight; // % down the bar
-    const scrollPosition = progress * (document.body.scrollHeight - window.innerHeight);
-  
-    gsap.to(window, {
-      scrollTo: scrollPosition,
-      duration: 0.725,
-      ease: 'power3.out',
-    });
-  });  
 }
 
 // Initialize Scroll Progress Bar
 document.addEventListener('DOMContentLoaded', () => {
   initScrollProgressBar();
 });
+
 
 // Hover animation for .home_hero-arrow-wrap
 document.querySelectorAll(".home_hero-arrow-wrap").forEach((wrap) => {
@@ -745,6 +1217,11 @@ document.querySelectorAll(".home_hero-arrow-wrap").forEach((wrap) => {
   wrap.addEventListener("mouseenter", () => tl.play());
   wrap.addEventListener("mouseleave", () => tl.reverse());
 });
+
+
+
+
+
 
 
 
@@ -1403,9 +1880,6 @@ document.querySelectorAll('[data-bunny-player-init]').forEach(player => {
 
 
 // GSAP Split Text Scramble
-
-gsap.registerPlugin(SplitText);
-
 // Utility: pick a random lowercase letter NOT in the original word
 function randomLetterExcluding(originalChars) {
   let char;
@@ -1415,6 +1889,66 @@ function randomLetterExcluding(originalChars) {
   } while (lowerOriginal.includes(char));
   return char;
 }
+
+// Reusable chaotic scramble function
+function scrambleText(target, finalText) {
+  // 🔑 Force correct character count BEFORE splitting
+  target.textContent = finalText;
+
+  const split = new SplitText(target, { type: "chars" });
+  const chars = split.chars;
+  const finalChars = finalText.split("");
+
+  const tl = gsap.timeline({
+    onComplete: () => {
+      chars.forEach((char, i) => {
+        char.textContent = finalChars[i];
+        char.style.color = "";
+        char.style.opacity = "";
+      });
+    }
+  });
+
+  chars.forEach((charSpan, i) => {
+    const flickerTimeline = gsap.timeline();
+    const flickerCount = 5 + Math.floor(Math.random() * 2);
+
+    for (let j = 0; j < flickerCount; j++) {
+      const rand = Math.random();
+      let newChar = finalChars[i];
+      let color = "";
+      let opacity = 1;
+
+      if (rand < 0.2) color = "#ff0f00";
+      else if (rand < 0.5) opacity = 0;
+      else newChar = randomLetterExcluding(finalChars);
+
+      flickerTimeline.to(charSpan, {
+        duration: 0.04 + Math.random() * 0.06,
+        textContent: newChar,
+        color,
+        opacity,
+        ease: "none"
+      });
+    }
+
+    flickerTimeline.to(charSpan, {
+      duration: 0.05,
+      textContent: finalChars[i],
+      color: "",
+      opacity: 1
+    });
+
+    tl.add(flickerTimeline, 0);
+  });
+
+  return tl;
+}
+
+
+
+
+
 
 function initChaoticHoverReducedRed() {
   document.querySelectorAll('[data-scramble-hover="link"]').forEach((wrapper) => {
@@ -1487,3 +2021,346 @@ function initChaoticHoverReducedRed() {
 }
 
 document.addEventListener("DOMContentLoaded", initChaoticHoverReducedRed);
+
+
+// Change cursor text on work hover
+const cursorTextMarquee = document.querySelector(".cursor-text");
+let cursorAnimating = false;
+
+function scrambleCursorText(newText) {
+  if (!cursorTextMarquee || cursorAnimating) return;
+
+  cursorAnimating = true;
+
+  // Animate scramble and restore to newText
+  scrambleText(cursorTextMarquee, newText);
+
+  gsap.delayedCall(0.5, () => {
+    cursorAnimating = false;
+  });
+}
+
+gsap.utils.toArray(".marquee_item").forEach(item => {
+  item.addEventListener("mouseenter", () => {
+    scrambleCursorText("PLAY");
+  });
+
+  item.addEventListener("mouseleave", () => {
+    scrambleCursorText("SCROLL");
+  });
+});
+
+
+// Bunny Background Video
+function initBunnyPlayerBackground() {
+  document.querySelectorAll('[data-bunny-background-init]').forEach(function(player) {
+    var src = player.getAttribute('data-player-src');
+    if (!src) return;
+
+    var video = player.querySelector('video');
+    if (!video) return;
+
+    try { video.pause(); } catch(_) {}
+    try { video.removeAttribute('src'); video.load(); } catch(_) {}
+
+    // Attribute helpers
+    function setStatus(s) {
+      if (player.getAttribute('data-player-status') !== s) {
+        player.setAttribute('data-player-status', s);
+      }
+    }
+    function setActivated(v) { player.setAttribute('data-player-activated', v ? 'true' : 'false'); }
+    if (!player.hasAttribute('data-player-activated')) setActivated(false);
+
+    // Flags
+    var lazyMode   = player.getAttribute('data-player-lazy'); // "true" | "false" (no meta)
+    var isLazyTrue = lazyMode === 'true';
+    var autoplay   = player.getAttribute('data-player-autoplay') === 'true';
+    var initialMuted = player.getAttribute('data-player-muted') === 'true';
+
+    // Used to suppress 'ready' flicker when user just pressed play in lazy modes
+    var pendingPlay = false;
+
+    // Autoplay forces muted + loop; IO will drive play/pause
+    if (autoplay) { video.muted = true; video.loop = true; }
+    else { video.muted = initialMuted; }
+
+    video.setAttribute('muted', '');
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+    video.playsInline = true;
+    if (typeof video.disableRemotePlayback !== 'undefined') video.disableRemotePlayback = true;
+    if (autoplay) video.autoplay = false;
+
+    var isSafariNative = !!video.canPlayType('application/vnd.apple.mpegurl');
+    var canUseHlsJs    = !!(window.Hls && Hls.isSupported()) && !isSafariNative;
+
+    // Attach media only once (for actual playback)
+    var isAttached = false;
+    var userInteracted = false;
+    var lastPauseBy = ''; // 'io' | 'manual' | ''
+    function attachMediaOnce() {
+      if (isAttached) return;
+      isAttached = true;
+
+      if (player._hls) { try { player._hls.destroy(); } catch(_) {} player._hls = null; }
+
+      if (isSafariNative) {
+        video.preload = isLazyTrue ? 'none' : 'auto';
+        video.src = src;
+        video.addEventListener('loadedmetadata', function() {
+          readyIfIdle(player, pendingPlay);
+        }, { once: true });
+      } else if (canUseHlsJs) {
+        var hls = new Hls({ maxBufferLength: 10 });
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MEDIA_ATTACHED, function() { hls.loadSource(src); });
+        hls.on(Hls.Events.MANIFEST_PARSED, function() {
+          readyIfIdle(player, pendingPlay);
+        });
+        player._hls = hls;
+      } else {
+        video.src = src;
+      }
+    }
+
+    // Initialize based on lazy mode
+    if (isLazyTrue) {
+      video.preload = 'none';
+    } else {
+      attachMediaOnce();
+    }
+
+    // Toggle play/pause
+    function togglePlay() {
+      userInteracted = true;
+      if (video.paused || video.ended) {
+        if (isLazyTrue && !isAttached) attachMediaOnce();
+        pendingPlay = true;
+        lastPauseBy = '';
+        setStatus('loading');
+        safePlay(video);
+      } else {
+        lastPauseBy = 'manual';
+        video.pause();
+      }
+    }
+
+    // Toggle mute
+    function toggleMute() {
+      video.muted = !video.muted;
+      player.setAttribute('data-player-muted', video.muted ? 'true' : 'false');
+    }
+
+    // Controls (delegated)
+    player.addEventListener('click', function(e) {
+      var btn = e.target.closest('[data-player-control]');
+      if (!btn || !player.contains(btn)) return;
+      var type = btn.getAttribute('data-player-control');
+      if (type === 'play' || type === 'pause' || type === 'playpause') togglePlay();
+      else if (type === 'mute') toggleMute();
+    });
+
+    // Media event wiring
+    video.addEventListener('play', function() { setActivated(true); setStatus('playing'); });
+    video.addEventListener('playing', function() { pendingPlay = false; setStatus('playing'); });
+    video.addEventListener('pause', function() { pendingPlay = false; setStatus('paused'); });
+    video.addEventListener('waiting', function() { setStatus('loading'); });
+    video.addEventListener('canplay', function() { readyIfIdle(player, pendingPlay); });
+    video.addEventListener('ended', function() { pendingPlay = false; setStatus('paused'); setActivated(false); });
+
+    // In-view auto play/pause (only when autoplay is true)
+    if (autoplay) {
+      if (player._io) { try { player._io.disconnect(); } catch(_) {} }
+      var io = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          var inView = entry.isIntersecting && entry.intersectionRatio > 0;
+          if (inView) {
+            if (isLazyTrue && !isAttached) attachMediaOnce();
+            if ((lastPauseBy === 'io') || (video.paused && lastPauseBy !== 'manual')) {
+              setStatus('loading');
+              if (video.paused) togglePlay();
+              lastPauseBy = '';
+            }
+          } else {
+            if (!video.paused && !video.ended) {
+              lastPauseBy = 'io';
+              video.pause();
+            }
+          }
+        });
+      }, { threshold: 0.1 });
+      io.observe(player);
+      player._io = io;
+    }
+  });
+
+  // Helper: Ready status guard
+  function readyIfIdle(player, pendingPlay) {
+    if (!pendingPlay &&
+        player.getAttribute('data-player-activated') !== 'true' &&
+        player.getAttribute('data-player-status') === 'idle') {
+      player.setAttribute('data-player-status', 'ready');
+    }
+  }
+
+  // Helper: safe programmatic play
+  function safePlay(video) {
+    var p = video.play();
+    if (p && typeof p.then === 'function') p.catch(function(){});
+  }
+}
+
+// Initialize Bunny HTML HLS Player (Background)
+document.addEventListener('DOMContentLoaded', function() {
+  initBunnyPlayerBackground();
+});
+
+
+
+
+// Logo Wall
+function initLogoWallCycle() {
+  const loopDelay = 1.5;   // Loop Duration
+  const duration  = 0.9;   // Animation Duration
+
+  document.querySelectorAll('[data-logo-wall-cycle-init]').forEach(root => {
+    const list   = root.querySelector('[data-logo-wall-list]');
+    const items  = Array.from(list.querySelectorAll('[data-logo-wall-item]'));
+
+    const shuffleFront = root.getAttribute('data-logo-wall-shuffle') !== 'false';
+    const originalTargets = items
+      .map(item => item.querySelector('[data-logo-wall-target]'))
+      .filter(Boolean);
+
+    let visibleItems   = [];
+    let visibleCount   = 0;
+    let pool           = [];
+    let pattern        = [];
+    let patternIndex   = 0;
+    let tl;
+
+    function isVisible(el) {
+      return window.getComputedStyle(el).display !== 'none';
+    }
+
+    function shuffleArray(arr) {
+      const a = arr.slice();
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    function setup() {
+      if (tl) {
+        tl.kill();
+      }
+      visibleItems = items.filter(isVisible);
+      visibleCount = visibleItems.length;
+
+      pattern = shuffleArray(
+        Array.from({ length: visibleCount }, (_, i) => i)
+      );
+      patternIndex = 0;
+
+      // remove all injected targets
+      items.forEach(item => {
+        item.querySelectorAll('[data-logo-wall-target]').forEach(old => old.remove());
+      });
+
+      pool = originalTargets.map(n => n.cloneNode(true));
+
+      let front, rest;
+      if (shuffleFront) {
+        const shuffledAll = shuffleArray(pool);
+        front = shuffledAll.slice(0, visibleCount);
+        rest  = shuffleArray(shuffledAll.slice(visibleCount));
+      } else {
+        front = pool.slice(0, visibleCount);
+        rest  = shuffleArray(pool.slice(visibleCount));
+      }
+      pool = front.concat(rest);
+
+      for (let i = 0; i < visibleCount; i++) {
+        const parent =
+          visibleItems[i].querySelector('[data-logo-wall-target-parent]') ||
+          visibleItems[i];
+        parent.appendChild(pool.shift());
+      }
+
+      tl = gsap.timeline({ repeat: -1, repeatDelay: loopDelay });
+      tl.call(swapNext);
+      tl.play();
+    }
+
+    function swapNext() {
+      const nowCount = items.filter(isVisible).length;
+      if (nowCount !== visibleCount) {
+        setup();
+        return;
+      }
+      if (!pool.length) return;
+
+      const idx = pattern[patternIndex % visibleCount];
+      patternIndex++;
+
+      const container = visibleItems[idx];
+      const parent =
+        container.querySelector('[data-logo-wall-target-parent]') ||
+        container.querySelector('*:has(> [data-logo-wall-target])') ||
+        container;
+      const existing = parent.querySelectorAll('[data-logo-wall-target]');
+      if (existing.length > 1) return;
+
+      const current  = parent.querySelector('[data-logo-wall-target]');
+      const incoming = pool.shift();
+
+      gsap.set(incoming, { yPercent: 50, autoAlpha: 0 });
+      parent.appendChild(incoming);
+
+      if (current) {
+        gsap.to(current, {
+          yPercent: -50,
+          autoAlpha: 0,
+          duration,
+          ease: "expo.inOut",
+          onComplete: () => {
+            current.remove();
+            pool.push(current);
+          }
+        });
+      }
+
+      gsap.to(incoming, {
+        yPercent: 0,
+        autoAlpha: 1,
+        duration,
+        delay: 0.1,
+        ease: "expo.inOut"
+      });
+    }
+
+    setup();
+
+    ScrollTrigger.create({
+      trigger: root,
+      start: 'top bottom',
+      end: 'bottom top',
+      onEnter:     () => tl.play(),
+      onLeave:     () => tl.pause(),
+      onEnterBack: () => tl.play(),
+      onLeaveBack: () => tl.pause()
+    });
+
+    document.addEventListener('visibilitychange', () =>
+      document.hidden ? tl.pause() : tl.play()
+    );
+  });
+}
+
+// Initialize Logo Wall Cycle
+document.addEventListener('DOMContentLoaded', () => {
+  initLogoWallCycle();
+});
